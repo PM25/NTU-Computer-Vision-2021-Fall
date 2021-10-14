@@ -59,20 +59,22 @@ def draw_cross(img, y, x, color=(0, 0, 255)):
     cv2.line(img, (x, y - 10), (x, y + 10), color, 2)
     cv2.line(img, (x - 10, y), (x + 10, y), color, 2)
 
+class UnionFind:
+    def __init__(self):
+        self.parent = {}
 
-def union_find(table, x):
-    if x not in table or table[x] == x:
+    def find(self, x):
+        while x in self.parent:
+            x = self.parent[x]
         return x
-    else:
-        return union_find(table, table[x])
 
-
-# class UnionFind:
-#     def find(self, x):
-#         pass
-
-#     def union(self, x, y):
-#         pass
+    def union(self, x, y):
+        root_x = self.find(x)
+        root_y = self.find(y)
+        if root_x < root_y:
+            self.parent[y] = root_x
+        elif root_x > root_y:
+            self.parent[x] = root_y
 
 
 def init_labels(img):
@@ -89,7 +91,8 @@ def init_labels(img):
     return labels
 
 
-def connected_components_classical(img):
+# 8-connected classical algorithm
+def connected_components_classical(img, threshold=500):
     height, width = img.shape
     labels = init_labels(img)
 
@@ -99,35 +102,31 @@ def connected_components_classical(img):
             if img[y, x] == 255:
                 labels[(y, x)] = min(find_neighbors(labels, y, x))
 
-    table = {}
+    # build equivalence table by UnionFind
+    union_find = UnionFind()
     for y in range(height):
         for x in range(width):
             if img[y, x] == 255:
                 neighbors = find_neighbors(labels, y, x)
                 if len(neighbors) > 1:
-                    min_label = min(neighbors)
-                    for neighbor in neighbors:
-                        if neighbor not in table:
-                            table[neighbor] = min_label
-                        elif table[neighbor] > min_label:
-                            table[neighbor] = min_label
+                    sorted_neighbors = sorted(neighbors)
+                    min_neighbor = sorted_neighbors[0]
+                    for neighbor in sorted_neighbors[1:]:
+                        union_find.union(min_neighbor, neighbor)
 
-    for label in table:
-        table[label] = union_find(table, label)
-
-    reverse_labels = {}
+    label2pos = {}
     for pos, label in labels.items():
-        label = union_find(table, label)
+        root_label = union_find.find(label)
 
-        if label in reverse_labels:
-            reverse_labels[label].append(pos)
+        if root_label in label2pos:
+            label2pos[root_label].append(pos)
         else:
-            reverse_labels[label] = [pos]
+            label2pos[root_label] = [pos]
 
     color_img = cv2.merge([img, img, img])
 
-    for label, positions in reverse_labels.items():
-        if len(positions) >= 500:
+    for label, positions in label2pos.items():
+        if len(positions) >= threshold:
             y, x = get_centroid(positions)
             draw_cross(color_img, int(y), int(x))
             draw_bounding_box(color_img, positions)
@@ -135,6 +134,7 @@ def connected_components_classical(img):
     cv2.imwrite("connected_components.jpg", color_img)
 
 
+# 8-connected iterative algorithm
 def connected_components_iterative(img, threshold=500):
     height, width = img.shape
     pos2label = init_labels(img)
